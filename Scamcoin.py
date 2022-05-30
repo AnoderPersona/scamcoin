@@ -28,16 +28,23 @@ class Blockchain:
         ##Agregar registro de transacciones
         self.transactions = []
         self.createBlock(proof = 1, previousHash = '0')
+
+        #???
+        self.block['hash_bloque'] = self.blockHash(self.block)
+
+
         ##Agregar nodos para el consenso
         self.nodes = set()
     
     def createBlock(self, proof, previousHash):
 
-        block = {'index': len(self.chain) + 1, # lito
+        block = {
+                'index': len(self.chain) + 1, # lito
                 'transactions': self.transactions, # lito
                 'timestamp': str(datetime.datetime.now()), # lito
                 'proof': proof, # lito
-                'previous_hash': previousHash # lito
+                'previous_hash': previousHash, # lito
+                'route': 'placeholder' #Puerto del node
                 }
         ##Se deben vaciar las transacciones
         self.transactions = []
@@ -175,6 +182,9 @@ def mineBlock():
     return jsonify(response),200
 
 #Obtener la blockchain
+
+#REVISAR----
+
 @app.route('/getChain', methods = ['GET'])
 def getChain():
     response = {'chain':blockchain.chain,
@@ -187,6 +197,10 @@ def validateChain():
     response = {'Is valid': blockchain.isChainValid(blockchain.chain),
                 'Date': blockchain.chain[-1]['timestamp']}
     return jsonify(response),200
+
+@app.route('/CorruptChain', methods = ['POST'])
+def CorruptChain():
+    return 0
 
 ##Agregar una nueva transaccion a la cadena
 @app.route('/addTransaction', methods = ['POST'])
@@ -220,9 +234,16 @@ def connectNode():
                 'total nodes':list(blockchain.nodes)}
     return jsonify(response),201
 
+@app.route('/DisconnectNode', methods = ['GET'])
+def DisconnectNode():
+    return 0 
+
 ##Aplicar consenso y ver cual es la cadena mas larga - Actividad en clases
-@app.route('/consensusChain', methods = ['GET'])
-def consensusChain():
+
+#REVISAR
+
+@app.route('/ReplaceChain', methods = ['GET'])
+def ReplaceChain():
     isChainReplaced = blockchain.replaceChain(blockchain.chain)
     if isChainReplaced:
         response = {'message':'Se ha reemplazado por una cadena mas larga',
