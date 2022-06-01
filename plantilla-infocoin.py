@@ -118,9 +118,6 @@ class Blockchain:
         
         return False
 
-    
-
-
 
 #Crear aplicacion
 app = Flask(__name__)

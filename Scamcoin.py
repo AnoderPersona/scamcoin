@@ -64,7 +64,7 @@ class Blockchain:
             #No simétrico
             hashOperation = hashlib.sha256(str(newProof**2 - previousProof**2).encode()).hexdigest()
 
-            if hashOperation[:2] == '00':
+            if hashOperation[:2] == '00':#hashOperation[:8] == '00000000':
                 checkProof = True
             else:
                 newProof += 1
@@ -89,7 +89,7 @@ class Blockchain:
             previousProof = previousBlock['proof']
             proof = block['proof']
             hashOperation = hashlib.sha256(str(proof**2 - previousProof**2).encode()).hexdigest()
-            if hashOperation[:2] != '00':
+            if hashOperation[:2] != '00':#hashOperation[:8] != '00000000':
                 return False
 
             #Iterar bloque
