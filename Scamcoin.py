@@ -10,6 +10,7 @@
 # app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
 
 import datetime
+from datetime import strptime
 import hashlib
 import json
 from flask import Flask, jsonify, request
@@ -62,7 +63,7 @@ class Blockchain:
 
         while checkProof is False:
             #No simétrico
-            hashOperation = hashlib.sha256(str(newProof**2 - previousProof**2).encode()).hexdigest()
+            hashOperation = hashlib.sha224(str(newProof**2 - previousProof**2).encode()).hexdigest()
 
             if hashOperation[:2] == '00':#hashOperation[:8] == '00000000':
                 checkProof = True
@@ -73,7 +74,7 @@ class Blockchain:
 
     def blockHash(self, block):
         encodeBlock = json.dumps(block, sort_keys = True).encode()
-        return hashlib.sha256(encodeBlock).hexdigest()
+        return hashlib.sha224(encodeBlock).hexdigest()
 
     def isChainValid(self, chain):
         previousBlock = chain[0]
@@ -88,7 +89,7 @@ class Blockchain:
             #Validar proof
             previousProof = previousBlock['proof']
             proof = block['proof']
-            hashOperation = hashlib.sha256(str(proof**2 - previousProof**2).encode()).hexdigest()
+            hashOperation = hashlib.sha224(str(proof**2 - previousProof**2).encode()).hexdigest()
             if hashOperation[:2] != '00':#hashOperation[:8] != '00000000':
                 return False
 
@@ -113,12 +114,23 @@ class Blockchain:
         #Uso de netloc para extraer direccion y puerto (host and port)
         self.nodes.add(parsedURL.netloc)
 
+    def deleteNode(self, address):
+        #Parsear URL la segmenta
+        parsedURL =urlparse(address)
+        #Uso de netloc para extraer direccion y puerto (host and port)
+        self.nodes.discard(parsedURL.netloc)
+
+
     ##Funcion de consenso
     def replaceChain(self):
         #Extraer red de nodos
         network = self.nodes
         longestChain = None
         maxLenght = len(self.chain)
+
+        newerChain = None
+        newerTime = datetime.datetime.strptime(self.block['datetime'],'%Y-%m-%d %H:%M:%S.%f')
+
         #Revisar la cadena mas larga en cada nodo
         for nodes in network:
             #Uso de requests para extraer la chain de cada nodo
@@ -126,12 +138,21 @@ class Blockchain:
             if response.status_code == 200:
                 lenght = response.json()['lenght']
                 chain = response.json()['chain']
+
+                #puede que nos de error
+                time = datetime.datetime.strptime(response.json()['block']['datetime'],'%Y-%m-%d %H:%M:%S.%f')
+
                 #Chequear largo y validez
                 if lenght > maxLenght and self.isChainValid(chain):
                     maxLenght = lenght
                     longestChain = chain
         
-        if longestChain:
+                elif (lenght == maxLenght and self.isChainValid(chain)):
+                    if (time > newerTime):
+                        newerTime = time
+                        newerChain = chain
+
+        if longestChain or newerChain:
             self.chain = longestChain
             return True
         
@@ -187,7 +208,16 @@ def mineBlock():
 
 @app.route('/getChain', methods = ['GET'])
 def getChain():
+    infoBloques = ''
+    bloque = blockchain.block
+
+    for i in blockchain.chain:
+        infoBloques += "index: {}, transaction: {}, timestamp: {}, proof: {}, previous hash: {}, route: {}\n".format(bloque['index'],bloque['transactions'],  bloque['timestamp'],  bloque['proof'],  bloque['previous_hash'],  bloque['route'])
+        bloque = bloque.getPreviousBlock()
+
     response = {'chain':blockchain.chain,
+                'block':blockchain.block,
+                'blocks':infoBloques,
                 'lenght of chain':len(blockchain.chain)}
     return jsonify(response),200
 
@@ -200,7 +230,20 @@ def validateChain():
 
 @app.route('/CorruptChain', methods = ['POST'])
 def CorruptChain():
-    return 0
+
+    cadena = blockchain.chain
+    bloque = cadena.block
+
+    if (bloque['hash_bloque'][-1] != '1'):
+        bloque['hash_bloque'] = bloque['hash_bloque'][:-1] + '1'
+    
+    else:
+        bloque['hash_bloque'] = bloque['hash_bloque'][:-1] + '2'
+
+    response = {'chain':cadena,
+                'block':bloque,
+                'lenght of chain':len(cadena)}
+    return jsonify(response),200
 
 ##Agregar una nueva transaccion a la cadena
 @app.route('/addTransaction', methods = ['POST'])
@@ -236,7 +279,17 @@ def connectNode():
 
 @app.route('/DisconnectNode', methods = ['GET'])
 def DisconnectNode():
-    return 0 
+    json = request.get_json()
+    nodes = json.get('nodes')
+    #Chequear que hayan nodos
+    if nodes is None:
+        return 'No hay nada',400
+    for node in nodes:
+        blockchain.deleteNode(node)
+    
+    response = {'message':'Red de nodos actualizada',
+                'total nodes':list(blockchain.nodes)}
+    return jsonify(response),201
 
 ##Aplicar consenso y ver cual es la cadena mas larga - Actividad en clases
 
