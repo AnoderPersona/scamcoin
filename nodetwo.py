@@ -1,3 +1,14 @@
+# import datetime
+# import hashlib
+# import json
+# from flask import Flask, jsonify
+# class Blockchain:
+#     def __init__(self):
+#         self.chain = []
+
+# app = Flask(__name__)
+# app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
+
 import datetime
 import hashlib
 import json
@@ -17,23 +28,30 @@ class Blockchain:
         ##Agregar registro de transacciones
         self.transactions = []
         self.createBlock(proof = 1, previousHash = '0')
+        
+        #???
+        self.chain[-1]['hash_bloque'] = self.blockHash(self.chain[-1])
+
         ##Agregar nodos para el consenso
         self.nodes = set()
     
     def createBlock(self, proof, previousHash):
 
-        block = {'index': len(self.chain) + 1,
-                'transactions': self.transactions,
-                'timestamp': str(datetime.datetime.now()),
-                'proof': proof,
-                'previous_hash': previousHash}
+        block = {
+                'index': len(self.chain) + 1, # lito
+                'transactions': self.transactions, # lito
+                'timestamp': str(datetime.datetime.now()), # lito
+                'proof': proof, # lito
+                'previous_hash': previousHash, # lito
+                'route': '127.0.0.1/5002' #Puerto del node
+                }
         ##Se deben vaciar las transacciones
         self.transactions = []
         
         self.chain.append(block)
         return block
 
-    def getPreviousBlock(self):
+    def getLastBlock(self):
         return self.chain[-1]
 
     def proofOfWork(self, previousProof):
@@ -42,10 +60,10 @@ class Blockchain:
         checkProof = False
 
         while checkProof is False:
-            #No simétrico
-            hashOperation = hashlib.sha256(str(newProof**2 - previousProof**2).encode()).hexdigest()
+            #No simetrico
+            hashOperation = hashlib.sha224(str(newProof**2 - previousProof**2).encode()).hexdigest()
 
-            if hashOperation[:2] == '00':
+            if hashOperation[:2] == '00':#hashOperation[:8] == '00000000':
                 checkProof = True
             else:
                 newProof += 1
@@ -54,7 +72,7 @@ class Blockchain:
 
     def blockHash(self, block):
         encodeBlock = json.dumps(block, sort_keys = True).encode()
-        return hashlib.sha256(encodeBlock).hexdigest()
+        return hashlib.sha224(encodeBlock).hexdigest()
 
     def isChainValid(self, chain):
         previousBlock = chain[0]
@@ -69,8 +87,8 @@ class Blockchain:
             #Validar proof
             previousProof = previousBlock['proof']
             proof = block['proof']
-            hashOperation = hashlib.sha256(str(proof**2 - previousProof**2).encode()).hexdigest()
-            if hashOperation[:2] != '00':
+            hashOperation = hashlib.sha224(str(proof**2 - previousProof**2).encode()).hexdigest()
+            if hashOperation[:2] != '00':#hashOperation[:8] != '00000000':
                 return False
 
             #Iterar bloque
@@ -84,7 +102,7 @@ class Blockchain:
                                 'receiver': receiver,
                                 'amount': amount})
         #Devolver el index del nuevo bloque
-        previousBlock = self.getPreviousBlock()
+        previousBlock = self.getLastBlock()
         return previousBlock['index'] + 1
 
     ##Registrar nodos
@@ -94,36 +112,73 @@ class Blockchain:
         #Uso de netloc para extraer direccion y puerto (host and port)
         self.nodes.add(parsedURL.netloc)
 
+    def deleteNode(self, address):
+        #Parsear URL la segmenta
+        parsedURL = urlparse(address)
+        #Uso de netloc para extraer direccion y puerto (host and port)
+        self.nodes.discard(parsedURL.netloc)
+
+
     ##Funcion de consenso
     def replaceChain(self):
         #Extraer red de nodos
         network = self.nodes
         longestChain = None
         maxLenght = len(self.chain)
+        condition = ''
+        newerChain = None
+        newerTime = datetime.datetime.strptime(blockchain.chain[-1]['timestamp'],'%Y-%m-%d %H:%M:%S.%f')
+        eqlength = None
         #Revisar la cadena mas larga en cada nodo
-        for nodes in network:
+        for node in network:
             #Uso de requests para extraer la chain de cada nodo
-            response = requests.get(f'http://{node}/getChain')
+            response = requests.get("http://{}/getChain".format(node))
             if response.status_code == 200:
                 lenght = response.json()['lenght']
                 chain = response.json()['chain']
+
+                #puede que nos de error
+                time = datetime.datetime.strptime(response.json()['block']['timestamp'],'%Y-%m-%d %H:%M:%S.%f')
+
                 #Chequear largo y validez
                 if lenght > maxLenght and self.isChainValid(chain):
                     maxLenght = lenght
                     longestChain = chain
+
+                    
         
-        if longestChain:
+                elif (lenght == maxLenght and self.isChainValid(chain)):
+                    eqlength = True
+                    if (time > newerTime):
+                        newerTime = time
+                        newerChain = chain
+                        
+
+        if longestChain or newerChain:
             self.chain = longestChain
-            return True
-        
-        return False
+            return False, 'cadena es la mas apropiada'
+
+        elif not self.isChainValid(blockchain.chain):
+            return True, 'cadena invalida'
+
+        elif longestChain == None and eqlength == None:
+            return True, 'no es la cadena mas larga'
+
+        elif newerChain == None:
+            return True, 'no es la cadena mas nueva'
+            
+        return False, ''
+
+
+    
+
 
 
 #Crear aplicacion
 app = Flask(__name__)
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
 
-##Crear dirección para nodo en puerto
+##Crear direccion para nodo en puerto
 nodeAddress = str(uuid4()).replace('-','')
 
 
@@ -134,8 +189,8 @@ blockchain = Blockchain()
 #Minar bloques
 @app.route('/mineBlock', methods=['GET'])
 def mineBlock():
-    #Obtener información de bloque previo
-    previousBlock = blockchain.getPreviousBlock()
+    #Obtener informacion de bloque previo
+    previousBlock = blockchain.getLastBlock()
     previousProof = previousBlock['proof']
     previousHash = blockchain.blockHash(previousBlock)
 
@@ -147,6 +202,7 @@ def mineBlock():
 
     #Crear bloque exitoso
     block = blockchain.createBlock(proof, previousHash)
+    blockchain.chain[-1]['hash_bloque'] = blockchain.blockHash(blockchain.chain[-1])
 
     #Mensaje de respuesta ##Modificar transactions
     response = {'message':'Se ha minado un bloque',
@@ -160,9 +216,18 @@ def mineBlock():
     return jsonify(response),200
 
 #Obtener la blockchain
+
+#REVISAR----
+
 @app.route('/getChain', methods = ['GET'])
 def getChain():
+    infoBloques = ''
+    for bloque in blockchain.chain:
+        infoBloques += "index: {}, transaction: {}, timestamp: {}, proof: {}, previous hash: {}, route: {}\n     ".format(bloque['index'],bloque['transactions'],  bloque['timestamp'],  bloque['proof'],  bloque['previous_hash'],  bloque['route'])
+
     response = {'chain':blockchain.chain,
+                'block':blockchain.chain[-1],
+                'blocks':infoBloques,
                 'lenght of chain':len(blockchain.chain)}
     return jsonify(response),200
 
@@ -171,6 +236,24 @@ def getChain():
 def validateChain():
     response = {'Is valid': blockchain.isChainValid(blockchain.chain),
                 'Date': blockchain.chain[-1]['timestamp']}
+    return jsonify(response),200
+
+@app.route('/CorruptChain', methods = ['GET'])
+def CorruptChain():
+
+    cadena = blockchain.chain
+    bloque = cadena[-1]
+
+    if (bloque['previous_hash'][-1] != '1'):
+        bloque['previous_hash'] = bloque['previous_hash'][:-1] + '1'
+    
+    else:
+        bloque['previous_hash'] = bloque['previous_hash'][:-1] + '2'
+    blockchain.chain[-1] = bloque
+    response = {'chain':cadena,
+                'block':bloque,
+                'lenght of chain':len(cadena),
+                'mensaje':'Cadena corrupta'}
     return jsonify(response),200
 
 ##Agregar una nueva transaccion a la cadena
@@ -205,21 +288,42 @@ def connectNode():
                 'total nodes':list(blockchain.nodes)}
     return jsonify(response),201
 
+@app.route('/DisconnectNode', methods = ['POST'])
+def DisconnectNode():
+    json = request.get_json()
+    nodes = json.get('nodes')
+    #Chequear que hayan nodos
+    if nodes is None:
+        return 'No hay nada',400
+    for node in nodes:
+        blockchain.deleteNode(node)
+    
+    response = {'message':'Red de nodos actualizada',
+                'total nodes':list(blockchain.nodes)}
+    return jsonify(response),201
+
 ##Aplicar consenso y ver cual es la cadena mas larga - Actividad en clases
-@app.route('/consensusChain', methods = ['GET'])
-def consensusChain():
-    isChainReplaced = blockchain.replaceChain(blockchain.chain)
+
+#REVISAR
+
+@app.route('/ReplaceChain', methods = ['GET'])
+def ReplaceChain():
+    isChainReplaced, condition = blockchain.replaceChain()
     if isChainReplaced:
-        response = {'message':'Se ha reemplazado por una cadena mas larga',
-                    'Nueva chain': blockchain.chain}
+        response = {'message':'Se ha reemplazado tu blockchain',
+                    'Nueva chain': blockchain.chain,
+                    'condition':condition}
+    
     else:
-        response = {'message':'Tu blockchain es la cadena mas larga',
-                    'Cadena actual': blockchain.chain}
+        response = {'message':'Tu blockchain prevalece',
+                    'Cadena actual': blockchain.chain,
+                    'condition':condition}
     return jsonify(response),200
 
 
 #Correr la aplicación
-app.run(host = '0.0.0.0', port=5000)
+app.run(host = '127.0.0.1', port=5002)
 ##Node One - Nombre: Onnee, port:5001
 ##Node Two - Nombre: Towee, port:5002
 ##Node Three - Nombre: Turi, port:5003
+
