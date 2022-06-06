@@ -43,7 +43,7 @@ class Blockchain:
                 'timestamp': str(datetime.datetime.now()), # lito
                 'proof': proof, # lito
                 'previous_hash': previousHash, # lito
-                'route': '127.0.0.1/5002' #Puerto del node
+                'route': '127.0.0.1/5001' #Puerto del node
                 }
         ##Se deben vaciar las transacciones
         self.transactions = []
@@ -75,26 +75,26 @@ class Blockchain:
         return hashlib.sha224(encodeBlock).hexdigest()
 
     def isChainValid(self, chain):
-        previousBlock = chain[0]
-        blockIndex = 1
+            previousBlock = blockchain.chain[0]
+            blockIndex = 1
 
-        while blockIndex < len(chain):
-            block = chain[blockIndex]
-            #Chequeo del hash previo
-            if block['previous_hash'] != self.blockHash(previousBlock):
-                return False
-            
-            #Validar proof
-            previousProof = previousBlock['proof']
-            proof = block['proof']
-            hashOperation = hashlib.sha224(str(proof**2 - previousProof**2).encode()).hexdigest()
-            if hashOperation[:2] != '00':#hashOperation[:8] != '00000000':
-                return False
+            while blockIndex < len(blockchain.chain):
+                block = blockchain.chain[blockIndex]
+                #Chequeo del hash previo
+                if block['previous_hash'] != self.blockHash(previousBlock):
+                    return False
+                
+                #Validar proof
+                previousProof = previousBlock['proof']
+                proof = block['proof']
+                hashOperation = hashlib.sha224(str(proof**2 - previousProof**2).encode()).hexdigest()
+                if hashOperation[:2] != '00':
+                    return False
 
-            #Iterar bloque
-            previousBlock = block
-            blockIndex +=1
-        return True
+                #Iterar bloque
+                previousBlock = block
+                blockIndex +=1
+            return True
 
     ##Agregar transacciones
     def addTransaction(self, sender, receiver, amount):
@@ -124,48 +124,58 @@ class Blockchain:
         #Extraer red de nodos
         network = self.nodes
         longestChain = None
+        lenght_chain = len(self.chain)
         maxLenght = len(self.chain)
-        condition = ''
         newerChain = None
+        valid = self.isChainValid(self.chain)
+        newerTime_chain = datetime.datetime.strptime(blockchain.chain[-1]['timestamp'],'%Y-%m-%d %H:%M:%S.%f')
         newerTime = datetime.datetime.strptime(blockchain.chain[-1]['timestamp'],'%Y-%m-%d %H:%M:%S.%f')
-        eqlength = None
         #Revisar la cadena mas larga en cada nodo
         for node in network:
             #Uso de requests para extraer la chain de cada nodo
             response = requests.get("http://{}/getChain".format(node))
             if response.status_code == 200:
-                lenght = response.json()['lenght']
+                #lenght = response.json()['lenght']
+                lenght = response.json()['lenght of chain']
                 chain = response.json()['chain']
-
                 #puede que nos de error
                 time = datetime.datetime.strptime(response.json()['block']['timestamp'],'%Y-%m-%d %H:%M:%S.%f')
-
-                #Chequear largo y validez
-                if lenght > maxLenght and self.isChainValid(chain):
+    
+                if lenght > maxLenght and self.isChainValid(chain) :
                     maxLenght = lenght
                     longestChain = chain
-
-                    
-        
-                elif (lenght == maxLenght and self.isChainValid(chain)):
-                    eqlength = True
+                
+                elif (lenght_chain == maxLenght) and self.isChainValid(chain):
                     if (time > newerTime):
                         newerTime = time
                         newerChain = chain
-                        
 
-        if longestChain or newerChain:
+      
+
+        #Si la cadena no era la más larga
+        if longestChain != None and longestChain != self.chain and self.isChainValid(longestChain):
             self.chain = longestChain
-            return False, 'cadena es la mas apropiada'
+            return True, 'Su cadena no es la mas larga, se ha reemplazado por la mas larga y valida'
 
-        elif not self.isChainValid(blockchain.chain):
-            return True, 'cadena invalida'
+        #Si la cadena era igual de larga que otra pero perdió por tiempo de minado.
+        elif (self.chain != longestChain ) and (lenght_chain == maxLenght) and (newerTime_chain < newerTime) and self.isChainValid(newerChain):
+            self.chain = newerChain
+            return True, 'Su cadena era igual de larga que otra pero perdió por tiempo de minado, se ha reemplazado por la mas apropiada'
 
-        elif longestChain == None and eqlength == None:
-            return True, 'no es la cadena mas larga'
+        #Si la cadena no era válida.
+        elif valid == True:
+            return False, 'Su cadena es valida'
 
-        elif newerChain == None:
-            return True, 'no es la cadena mas nueva'
+        elif valid == False:
+            if longestChain != None:
+                self.chain = newerChain
+                return True, 'Su cadena no es valida, se ha reemplazado por la mas larga y valida'
+            elif newerChain != None:
+                self.chain = longestChain
+                return True, 'Su cadena no es valida, se ha reemplazado por la mas nueva y valida'
+            else:
+                self.chain = chain
+                return True, 'Su cadena no es valida, se ha reemplazado por la mas apropiada'
             
         return False, ''
 
@@ -310,20 +320,20 @@ def DisconnectNode():
 def ReplaceChain():
     isChainReplaced, condition = blockchain.replaceChain()
     if isChainReplaced:
-        response = {'message':'Se ha reemplazado tu blockchain',
+        response = {'message':'Se ha reemplazado tu cadena',
                     'Nueva chain': blockchain.chain,
                     'condition':condition}
     
     else:
-        response = {'message':'Tu blockchain prevalece',
+        response = {'message':'Tu cadena prevalece',
                     'Cadena actual': blockchain.chain,
                     'condition':condition}
     return jsonify(response),200
 
 
 #Correr la aplicación
-app.run(host = '127.0.0.1', port=5002)
+app.run(host = '127.0.0.1', port=5001)
 ##Node One - Nombre: Onnee, port:5001
-##Node Two - Nombre: Towee, port:5002
+##Node Two - Nombre: Towee, port:5001
 ##Node Three - Nombre: Turi, port:5003
 

@@ -13,7 +13,6 @@ import datetime
 import hashlib
 import json
 from flask import Flask, jsonify, request
-
 import requests #pip install request, por seguridad usar python<=3.9
 from uuid import uuid4
 from urllib.parse import urlparse
@@ -44,7 +43,7 @@ class Blockchain:
                 'timestamp': str(datetime.datetime.now()), # lito
                 'proof': proof, # lito
                 'previous_hash': previousHash, # lito
-                'route': '127.0.0.1/5000' #Puerto del node
+                'route': '127.0.0.1/5003' #Puerto del node
                 }
         ##Se deben vaciar las transacciones
         self.transactions = []
@@ -131,7 +130,6 @@ class Blockchain:
         valid = self.isChainValid(self.chain)
         newerTime_chain = datetime.datetime.strptime(blockchain.chain[-1]['timestamp'],'%Y-%m-%d %H:%M:%S.%f')
         newerTime = datetime.datetime.strptime(blockchain.chain[-1]['timestamp'],'%Y-%m-%d %H:%M:%S.%f')
-        CADENA = None
         #Revisar la cadena mas larga en cada nodo
         for node in network:
             #Uso de requests para extraer la chain de cada nodo
@@ -140,20 +138,17 @@ class Blockchain:
                 #lenght = response.json()['lenght']
                 lenght = response.json()['lenght of chain']
                 chain = response.json()['chain']
-                CADENA = chain
                 #puede que nos de error
                 time = datetime.datetime.strptime(response.json()['block']['timestamp'],'%Y-%m-%d %H:%M:%S.%f')
-                if self.isChainValid(CADENA):
-                    if lenght > maxLenght :
-                        maxLenght = lenght
-                        longestChain = CADENA
-                    
-                    elif (lenght_chain == maxLenght):
-                        if (time > newerTime):
-                            newerTime = time
-                            newerChain = CADENA
-                else:
-                    CADENA = longestChain
+    
+                if lenght > maxLenght and self.isChainValid(chain) :
+                    maxLenght = lenght
+                    longestChain = chain
+                
+                elif (lenght_chain == maxLenght) and self.isChainValid(chain):
+                    if (time > newerTime):
+                        newerTime = time
+                        newerChain = chain
 
       
 
@@ -172,9 +167,15 @@ class Blockchain:
             return False, 'Su cadena es valida'
 
         elif valid == False:
-            print(CADENA)
-            self.chain = longestChain
-            return True, 'Su cadena no es valida, se ha reemplazado por la mas apropiada'    
+            if longestChain != None:
+                self.chain = newerChain
+                return True, 'Su cadena no es valida, se ha reemplazado por la mas larga y valida'
+            elif newerChain != None:
+                self.chain = longestChain
+                return True, 'Su cadena no es valida, se ha reemplazado por la mas nueva y valida'
+            else:
+                self.chain = chain
+                return True, 'Su cadena no es valida, se ha reemplazado por la mas apropiada'
             
         return False, ''
 
@@ -331,7 +332,7 @@ def ReplaceChain():
 
 
 #Correr la aplicación
-app.run(host = '127.0.0.1', port=5000)
+app.run(host = '127.0.0.1', port=5003)
 ##Node One - Nombre: Onnee, port:5001
 ##Node Two - Nombre: Towee, port:5001
 ##Node Three - Nombre: Turi, port:5003
